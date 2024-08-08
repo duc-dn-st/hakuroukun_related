@@ -40,8 +40,11 @@ class HakuroukunCommunicationNode(object):
 
         self.connection = serial.Serial(port, int(baud_rate), timeout=None)
         
-        self.controller_subscriber = rospy.Subscriber(
-            "/cmd_controller_input", Float64MultiArray, self._controller_input_callback)
+        self.cmd_controller_subscriber = rospy.Subscriber(
+            "/cmd_controller", Float64MultiArray, self._cmd_controller_callback)
+
+        self.cmd_vel_subscriber = rospy.Subscriber(
+            "/cmd_vel", Twist, self._cmd_vel_callback)
 
         # Ros Timer
         self.timer = rospy.Timer(
@@ -50,10 +53,17 @@ class HakuroukunCommunicationNode(object):
 
         self.sequence_id = 0
 
-        self.velocity_msg = Twist()
+        self.cmd_vel_msg = Twist()
 
-        self.controller_msg = Float64MultiArray()
-        self.controller_msg.data = [0.0, 0.0]
+        self.cmd_controller_msg = Float64MultiArray()
+
+        self.cmd_controller_msg.data = [0.0, 0.0]
+
+        self.cumulative_steering_angle = 0.0  # Initialize cumulative steering angle
+
+        self.cmd_vel_flag = False
+        
+        self.cmd_controller_flag = False
 
     def run(self) -> None:
         """! Start ros node
@@ -67,6 +77,7 @@ class HakuroukunCommunicationNode(object):
         """! Callback function for velocity timer
         @param[in] event: timer event
         """
+
         acceleration_command, steering_command = self._apply_indentification()
 
         rospy.loginfo(f"0{self.direction}{steering_command}{acceleration_command}")
@@ -75,15 +86,11 @@ class HakuroukunCommunicationNode(object):
 
         self.connection.write(bytes(f"{command}\r\n", encoding='ascii'))
 
-        time.sleep(0.5)
-
         self.connection.flush()
 
         data = b""
 
         data = self.connection.readline()
-
-        rospy.loginfo(data)
 
 
     def _generate_command(self, acceleration_command, steering_command):
@@ -92,25 +99,60 @@ class HakuroukunCommunicationNode(object):
         """
         pass
 
-    def _controller_input_callback(self, msg: Float64MultiArray) -> None:
+    def _cmd_controller_callback(self, msg: Float64MultiArray) -> None:
         """! Callback function for Controller input subscriber
         @param[in] msg: Controller input message in Float64MultiArray form
         """
-        self.controller_msg = msg
+        self.cmd_controller_msg = msg
+
+        self.cmd_controller_flag = True
     
+    def _cmd_vel_callback(self, msg: Twist) -> None:
+        """! Callback function for velocity subscriber
+        @param[in] msg: velocity message in Twist form
+        """
+        self.cmd_vel_msg = msg
+
+        self.cmd_vel_flag = True
+
+        # rospy.loginfo(f"Velocity: {self.cmd_vel_msg}")
+
     def _apply_indentification(self):
         """! Apply system indentification so as to send the right voltage
         @param[in] msg: velocity message in Twist form
         """
 
+        linear_velocity = 0.0
+
+        steering_angle = 0.0
+
         self.direction = 0
 
-        if self.controller_msg.data[0] < 0:
-            self.direction = 1
+        if self.cmd_vel_flag:
 
-        linear_velocity = abs(self.controller_msg.data[0])
+            self.cmd_vel_flag = False
 
-        steering_angle = math.degrees(self.controller_msg.data[1])
+            if self.cmd_vel_msg.linear.x < 0:
+
+                self.direction = 1
+
+            linear_velocity = abs(self.cmd_vel_msg.linear.x)
+
+            steering_angle_ = math.degrees(self.cmd_vel_msg.angular.z)
+
+            self.cumulative_steering_angle += steering_angle_ * 0.5
+
+            steering_angle = self.cumulative_steering_angle
+
+        elif self.cmd_controller_flag:
+
+            if self.cmd_controller_msg.data[0] < 0:
+                self.direction = 1
+
+            linear_velocity = abs(self.cmd_controller_msg.data[0])
+
+            steering_angle = math.degrees(self.cmd_controller_msg.data[1])
+
 
         # # ==========================================================================
         # # TODO: Add system indentification equation here
