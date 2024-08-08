@@ -367,7 +367,7 @@ private:
         odom_sub_ = nh_.subscribe("/hakuroukun_pose/pose", 4, &MpccControllerNode::OdomCallback, this);
         orientation_sub_ = nh_.subscribe("/hakuroukun_pose/orientation", 4, &MpccControllerNode::OrientationCallback, this);
         // emergency_flag_sub_ = nh.subscribe("/emergency_flag", 1, &MpccControllerNode::EmergencyFlagCallback, this);
-        controller_publisher = nh_.advertise<std_msgs::Float64MultiArray>("cmd_controller_input", 1000);
+        controller_publisher = nh_.advertise<std_msgs::Float64MultiArray>("cmd_controller", 1000);
         controller_msg.data = {0.0, 0.0};
 
         boost::shared_ptr<sdv_msgs::Trajectory const> traj_msg;
